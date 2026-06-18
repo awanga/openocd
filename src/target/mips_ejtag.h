@@ -204,6 +204,14 @@ static const struct dcr_feature {
 
 #define EJTAG_DCR_ENTRIES (ARRAY_SIZE(dcr_features))
 
+/* Runtime selection of the MIPS32 memory access path on targets whose EJTAG
+ * hardware supports DMA. Controlled at runtime via "mips32 dma_mode"; it
+ * defaults to AUTO. OFF restores the historical PRACC-only behaviour. */
+enum mips_ejtag_dma_mode {
+	MIPS_EJTAG_DMA_AUTO = 0,	/* use DMA when caps.dma_supported (default) */
+	MIPS_EJTAG_DMA_OFF,		/* force PRACC; never use DMA */
+};
+
 struct mips_ejtag {
 	struct jtag_tap *tap;
 	uint32_t impcode;
@@ -246,7 +254,25 @@ struct mips_ejtag {
 	/* Runtime capabilities decoded from impcode (see mips_ejtag_caps.h).
 	 * Populated by mips_ejtag_detect_caps() during mips_ejtag_init(). */
 	struct mips_ejtag_caps caps;
+
+	/* Runtime override for DMA vs PRACC memory access, set via
+	 * "mips32 dma_mode". Defaults to AUTO (follow caps.dma_supported). */
+	enum mips_ejtag_dma_mode dma_mode;
 };
+
+/**
+ * mips_ejtag_use_dma - whether EJTAG DMA should be used for memory access.
+ *
+ * Honours both the detected hardware capability and the runtime dma_mode
+ * override: DMA is used only when the hardware advertises it (NODMA clear)
+ * and the user has not forced PRACC via "mips32 dma_mode off".
+ */
+static inline bool mips_ejtag_use_dma(const struct mips_ejtag *ejtag_info)
+{
+	if (ejtag_info->dma_mode == MIPS_EJTAG_DMA_OFF)
+		return false;
+	return ejtag_info->caps.dma_supported;
+}
 
 void mips_ejtag_set_instr(struct mips_ejtag *ejtag_info, uint32_t new_instr);
 int mips_ejtag_enter_debug(struct mips_ejtag *ejtag_info);

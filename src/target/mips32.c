@@ -571,6 +571,7 @@ int mips32_init_arch_info(struct target *target, struct mips32_common *mips32, s
 	/* if unknown endianness defaults to little endian, 1 */
 	mips32->ejtag_info.endianness = target->endianness == TARGET_BIG_ENDIAN ? 0 : 1;
 	mips32->ejtag_info.scan_delay = MIPS32_SCAN_DELAY_LEGACY_MODE;
+	mips32->ejtag_info.dma_mode = MIPS_EJTAG_DMA_AUTO;	/* DMA when supported */
 	mips32->ejtag_info.mode = 0;			/* Initial default value */
 	mips32->ejtag_info.isa = 0;	/* isa on debug mips32, updated by poll function */
 	mips32->ejtag_info.config_regs = 0;	/* no config register read */
@@ -2405,7 +2406,10 @@ COMMAND_HANDLER(mips32_handle_ejtag_caps_command)
 	command_print(CMD, "EJTAG version:  %s", mips32_ejtag_version_name(caps->ejtag_version));
 	command_print(CMD, "CPU width:      %s", caps->mips64 ? "MIPS64" : "MIPS32");
 	command_print(CMD, "DMA access:     %s",
-		caps->dma_supported ? "supported by hardware (gated; see Phase 5)" : "not supported");
+		caps->dma_supported ? "supported by hardware" : "not supported");
+	command_print(CMD, "DMA mode:       %s (path: %s)",
+		ejtag_info->dma_mode == MIPS_EJTAG_DMA_OFF ? "off" : "auto",
+		mips_ejtag_use_dma(ejtag_info) ? "DMA" : "PRACC");
 	command_print(CMD, "MIPS16 ASE:     %s", caps->mips16 ? "yes" : "no");
 	command_print(CMD, "EADDR > 32-bit: %s", caps->eaddr_over_32 ? "yes" : "no");
 	if (caps->asid_size)
@@ -2423,6 +2427,37 @@ COMMAND_HANDLER(mips32_handle_ejtag_caps_command)
 		command_print(CMD, "proc break:     %s", caps->has_proc_break ? "yes" : "no");
 		command_print(CMD, "break channels: %u", caps->break_channels);
 	}
+
+	return ERROR_OK;
+}
+
+COMMAND_HANDLER(mips32_handle_dma_mode_command)
+{
+	struct target *target = get_current_target(CMD_CTX);
+	struct mips32_common *mips32 = target_to_mips32(target);
+	struct mips_ejtag *ejtag_info = &mips32->ejtag_info;
+
+	if (CMD_ARGC > 1)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	if (CMD_ARGC == 1) {
+		if (strcmp(CMD_ARGV[0], "auto") == 0) {
+			ejtag_info->dma_mode = MIPS_EJTAG_DMA_AUTO;
+		} else if (strcmp(CMD_ARGV[0], "off") == 0) {
+			ejtag_info->dma_mode = MIPS_EJTAG_DMA_OFF;
+		} else {
+			command_print(CMD, "invalid mode '%s' (expected 'auto' or 'off')",
+				CMD_ARGV[0]);
+			return ERROR_COMMAND_SYNTAX_ERROR;
+		}
+	}
+
+	command_print(CMD, "DMA mode: %s",
+		ejtag_info->dma_mode == MIPS_EJTAG_DMA_OFF ? "off (force PRACC)" : "auto");
+	command_print(CMD, "hardware DMA support: %s",
+		ejtag_info->caps.dma_supported ? "yes" : "no");
+	command_print(CMD, "memory access path: %s",
+		mips_ejtag_use_dma(ejtag_info) ? "DMA" : "PRACC");
 
 	return ERROR_OK;
 }
@@ -2470,6 +2505,14 @@ static const struct command_registration mips32_exec_command_handlers[] = {
 		.mode = COMMAND_ANY,
 		.help = "display EJTAG runtime capabilities decoded from impcode",
 		.usage = "",
+	},
+	{
+		.name = "dma_mode",
+		.handler = mips32_handle_dma_mode_command,
+		.mode = COMMAND_ANY,
+		.help = "display/set EJTAG memory access mode: 'auto' uses DMA when "
+			"the hardware supports it, 'off' forces PRACC",
+		.usage = "['auto'|'off']",
 	},
 	COMMAND_REGISTRATION_DONE
 };

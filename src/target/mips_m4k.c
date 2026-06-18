@@ -1045,9 +1045,9 @@ static int mips_m4k_read_memory(struct target *target, target_addr_t address,
 	} else
 		t = buffer;
 
-	/* Use DMAACC mode when the hardware advertises DMA, else PRACC. */
+	/* Use DMAACC when DMA is available and not overridden, else PRACC. */
 	int retval;
-	if (ejtag_info->caps.dma_supported)
+	if (mips_ejtag_use_dma(ejtag_info))
 		retval = mips32_dmaacc_read_mem(ejtag_info, address, size, count, t);
 	else
 		retval = mips32_pracc_read_mem(ejtag_info, address, size, count, t);
@@ -1121,9 +1121,9 @@ static int mips_m4k_write_memory(struct target *target, target_addr_t address,
 		buffer = t;
 	}
 
-	/* Use DMAACC mode when the hardware advertises DMA, else PRACC. */
+	/* Use DMAACC when DMA is available and not overridden, else PRACC. */
 	int retval;
-	if (ejtag_info->caps.dma_supported)
+	if (mips_ejtag_use_dma(ejtag_info))
 		retval = mips32_dmaacc_write_mem(ejtag_info, address, size, count, buffer);
 	else
 		retval = mips32_pracc_write_mem(ejtag_info, address, size, count, buffer);
