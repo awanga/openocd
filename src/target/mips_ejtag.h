@@ -12,6 +12,8 @@
 
 #include <jtag/jtag.h>
 
+#include "mips_ejtag_caps.h"
+
 /* tap instructions */
 #define EJTAG_INST_IDCODE		0x01
 #define EJTAG_INST_IMPCODE		0x03
@@ -240,6 +242,10 @@ struct mips_ejtag {
 
 	uint32_t ejtag_iba_step_size;
 	uint32_t ejtag_dba_step_size;	/* size of step till next *DBAn register. */
+
+	/* Runtime capabilities decoded from impcode (see mips_ejtag_caps.h).
+	 * Populated by mips_ejtag_detect_caps() during mips_ejtag_init(). */
+	struct mips_ejtag_caps caps;
 };
 
 void mips_ejtag_set_instr(struct mips_ejtag *ejtag_info, uint32_t new_instr);
@@ -263,6 +269,7 @@ int mips64_ejtag_config_step(struct mips_ejtag *ejtag_info, bool enable_step);
 
 void ejtag_main_print_imp(struct mips_ejtag *ejtag_info);
 int mips_ejtag_get_impcode(struct mips_ejtag *ejtag_info);
+void mips_ejtag_detect_caps(struct mips_ejtag *ejtag_info);
 
 static inline void mips_le_to_h_u32(jtag_callback_data_t arg)
 {

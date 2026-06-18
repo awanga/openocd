@@ -124,7 +124,8 @@ MIPS32_SRC = \
 	%D%/mips_m4k.c \
 	%D%/mips32_pracc.c \
 	%D%/mips32_dmaacc.c \
-	%D%/mips_ejtag.c
+	%D%/mips_ejtag.c \
+	%D%/mips_ejtag_caps.c
 
 MIPS64_SRC = \
 	%D%/mips64.c \
@@ -132,7 +133,8 @@ MIPS64_SRC = \
 	%D%/mips64_pracc.c \
 	%D%/mips_mips64.c \
 	%D%/trace.c \
-	%D%/mips_ejtag.c
+	%D%/mips_ejtag.c \
+	%D%/mips_ejtag_caps.c
 
 STM8_SRC = \
 	%D%/stm8.c
@@ -209,6 +211,7 @@ ARC_SRC = \
 	%D%/mips_m4k.h \
 	%D%/mips_mips64.h \
 	%D%/mips_ejtag.h \
+	%D%/mips_ejtag_caps.h \
 	%D%/mips32_pracc.h \
 	%D%/mips32_dmaacc.h \
 	%D%/mips64_pracc.h \

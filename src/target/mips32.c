@@ -2362,6 +2362,71 @@ COMMAND_HANDLER(mips32_handle_scan_delay_command)
 	return ERROR_OK;
 }
 
+static const char *mips32_ejtag_version_name(unsigned int version)
+{
+	switch (version) {
+	case EJTAG_VERSION_20:
+		return "1.x/2.0";
+	case EJTAG_VERSION_25:
+		return "2.5";
+	case EJTAG_VERSION_26:
+		return "2.6";
+	case EJTAG_VERSION_31:
+		return "3.1";
+	case EJTAG_VERSION_41:
+		return "4.1";
+	case EJTAG_VERSION_51:
+		return "5.1";
+	default:
+		return "unknown";
+	}
+}
+
+COMMAND_HANDLER(mips32_handle_ejtag_caps_command)
+{
+	struct target *target = get_current_target(CMD_CTX);
+	struct mips32_common *mips32 = target_to_mips32(target);
+	struct mips_ejtag *ejtag_info = &mips32->ejtag_info;
+
+	if (CMD_ARGC != 0)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	/* Refresh impcode and decode, so the command works at any time the
+	 * target is connected (mirrors "mips32 ejtag_reg"). */
+	int retval = mips_ejtag_get_impcode(ejtag_info);
+	if (retval != ERROR_OK) {
+		command_print(CMD, "Error: failed to read impcode");
+		return retval;
+	}
+	mips_ejtag_decode_caps(ejtag_info->impcode, &ejtag_info->caps);
+
+	const struct mips_ejtag_caps *caps = &ejtag_info->caps;
+	command_print(CMD, "impcode:        0x%8.8" PRIx32, ejtag_info->impcode);
+	command_print(CMD, "EJTAG version:  %s", mips32_ejtag_version_name(caps->ejtag_version));
+	command_print(CMD, "CPU width:      %s", caps->mips64 ? "MIPS64" : "MIPS32");
+	command_print(CMD, "DMA access:     %s",
+		caps->dma_supported ? "supported by hardware (gated; see Phase 5)" : "not supported");
+	command_print(CMD, "MIPS16 ASE:     %s", caps->mips16 ? "yes" : "no");
+	command_print(CMD, "EADDR > 32-bit: %s", caps->eaddr_over_32 ? "yes" : "no");
+	if (caps->asid_size)
+		command_print(CMD, "TLB ASID size:  %u bits", caps->asid_size);
+	else
+		command_print(CMD, "TLB ASID size:  none/unknown");
+
+	if (caps->ejtag_version == EJTAG_VERSION_26)
+		command_print(CMD, "core type:      %s%s", caps->type_r3k ? "R3k" : "R4k",
+			caps->dint_supported ? ", DINT" : "");
+
+	if (caps->ejtag_version == EJTAG_VERSION_20) {
+		command_print(CMD, "instr break:    %s", caps->has_inst_break ? "yes" : "no");
+		command_print(CMD, "data break:     %s", caps->has_data_break ? "yes" : "no");
+		command_print(CMD, "proc break:     %s", caps->has_proc_break ? "yes" : "no");
+		command_print(CMD, "break channels: %u", caps->break_channels);
+	}
+
+	return ERROR_OK;
+}
+
 static const struct command_registration mips32_exec_command_handlers[] = {
 	{
 		.name = "cp0",
@@ -2397,6 +2462,13 @@ static const struct command_registration mips32_exec_command_handlers[] = {
 		.handler = mips32_handle_ejtag_reg_command,
 		.mode = COMMAND_ANY,
 		.help = "read ejtag registers",
+		.usage = "",
+	},
+	{
+		.name = "ejtag_caps",
+		.handler = mips32_handle_ejtag_caps_command,
+		.mode = COMMAND_ANY,
+		.help = "display EJTAG runtime capabilities decoded from impcode",
 		.usage = "",
 	},
 	COMMAND_REGISTRATION_DONE

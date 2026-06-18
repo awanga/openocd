@@ -332,6 +332,11 @@ static void ejtag_v26_print_imp(struct mips_ejtag *ejtag_info)
 		EJTAG_IMP_HAS(EJTAG_V26_IMP_DINT) ? " DINT" : "");
 }
 
+void mips_ejtag_detect_caps(struct mips_ejtag *ejtag_info)
+{
+	mips_ejtag_decode_caps(ejtag_info->impcode, &ejtag_info->caps);
+}
+
 void ejtag_main_print_imp(struct mips_ejtag *ejtag_info)
 {
 	LOG_DEBUG("EJTAG main: features:%s%s%s%s%s",
@@ -392,6 +397,13 @@ int mips_ejtag_init(struct mips_ejtag *ejtag_info)
 		break;
 	}
 	ejtag_main_print_imp(ejtag_info);
+
+	/* Decode runtime capabilities from the pristine impcode, before the
+	 * NODMA override below mutates it, so caps.dma_supported records the
+	 * true hardware capability. Capabilities are reported via the
+	 * "mips32 ejtag_caps" command; they do not yet alter behavior.
+	 * Re-enabling DMA based on caps.dma_supported is deferred to Phase 5. */
+	mips_ejtag_detect_caps(ejtag_info);
 
 	if ((ejtag_info->impcode & EJTAG_IMP_NODMA) == 0) {
 		LOG_DEBUG("EJTAG: DMA Access Mode detected. Disabling to "
