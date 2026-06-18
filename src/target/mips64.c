@@ -458,8 +458,10 @@ int mips64_run_algorithm(struct target *target, int num_mem_params,
 			 struct reg_param *reg_params, target_addr_t entry_point,
 			 target_addr_t exit_point, unsigned int timeout_ms, void *arch_info)
 {
-	/* TODO */
-	return ERROR_OK;
+	/* TODO: not yet implemented; fail loudly rather than silently
+	 * pretending the algorithm ran (which would corrupt caller results). */
+	LOG_ERROR("%s: run_algorithm is not implemented for MIPS64", __func__);
+	return ERROR_FAIL;
 }
 
 int mips64_examine(struct target *target)
