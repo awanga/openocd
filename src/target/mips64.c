@@ -19,6 +19,7 @@
 #endif
 
 #include "mips64.h"
+#include "algorithm.h"
 
 static const struct {
 	unsigned int id;
@@ -453,15 +454,158 @@ int mips64_init_arch_info(struct target *target, struct mips64_common *mips64,
 	return ERROR_OK;
 }
 
+/* run to exit point. return error if exit point was not reached. */
+static int mips64_run_and_wait(struct target *target, target_addr_t entry_point,
+		unsigned int timeout_ms, target_addr_t exit_point,
+		struct mips64_common *mips64)
+{
+	uint64_t pc;
+	int retval;
+	struct reg *pc_reg = &mips64->core_cache->reg_list[MIPS64_PC];
+
+	/* This code relies on the target specific resume() and
+	 * poll()->debug_entry() sequence to write register values to the
+	 * processor and then read them back. */
+	retval = target_resume(target, false, entry_point, false, true);
+	if (retval != ERROR_OK)
+		return retval;
+
+	retval = target_wait_state(target, TARGET_HALTED, timeout_ms);
+	/* If the target fails to halt due to the breakpoint, force a halt. */
+	if (retval != ERROR_OK || target->state != TARGET_HALTED) {
+		retval = target_halt(target);
+		if (retval != ERROR_OK)
+			return retval;
+		retval = target_wait_state(target, TARGET_HALTED, 500);
+		if (retval != ERROR_OK)
+			return retval;
+		return ERROR_TARGET_TIMEOUT;
+	}
+
+	pc = buf_get_u64(pc_reg->value, 0, 64);
+	if (exit_point && pc != exit_point) {
+		LOG_DEBUG("failed algorithm halted at 0x%" PRIx64, pc);
+		return ERROR_TARGET_TIMEOUT;
+	}
+
+	return ERROR_OK;
+}
+
 int mips64_run_algorithm(struct target *target, int num_mem_params,
 			 struct mem_param *mem_params, int num_reg_params,
 			 struct reg_param *reg_params, target_addr_t entry_point,
 			 target_addr_t exit_point, unsigned int timeout_ms, void *arch_info)
 {
-	/* TODO: not yet implemented; fail loudly rather than silently
-	 * pretending the algorithm ran (which would corrupt caller results). */
-	LOG_ERROR("%s: run_algorithm is not implemented for MIPS64", __func__);
-	return ERROR_FAIL;
+	struct mips64_common *mips64 = target->arch_info;
+	uint64_t context[MIPS64_NUM_REGS];
+	int retval = ERROR_OK;
+
+	LOG_DEBUG("Running algorithm");
+
+	/* NOTE: mips64_run_algorithm requires that each algorithm uses a
+	 * software breakpoint at the exit point.
+	 *
+	 * arch_info is intentionally unused: unlike MIPS32, this MIPS64 target
+	 * has no per-algorithm ISA mode (no MIPS16/microMIPS) to select. */
+
+	if (mips64->common_magic != MIPS64_COMMON_MAGIC) {
+		LOG_ERROR("current target isn't a MIPS64 target");
+		return ERROR_TARGET_INVALID;
+	}
+
+	if (target->state != TARGET_HALTED) {
+		LOG_TARGET_ERROR(target, "not halted (run target algo)");
+		return ERROR_TARGET_NOT_HALTED;
+	}
+
+	/* refresh core register cache */
+	for (unsigned int i = 0; i < MIPS64_NUM_REGS; i++) {
+		if (!mips64->core_cache->reg_list[i].valid)
+			mips64->read_core_reg(target, i);
+		context[i] = buf_get_u64(mips64->core_cache->reg_list[i].value, 0, 64);
+	}
+
+	for (int i = 0; i < num_mem_params; i++) {
+		if (mem_params[i].direction == PARAM_IN)
+			continue;
+		retval = target_write_buffer(target, mem_params[i].address,
+				mem_params[i].size, mem_params[i].value);
+		if (retval != ERROR_OK)
+			return retval;
+	}
+
+	for (int i = 0; i < num_reg_params; i++) {
+		if (reg_params[i].direction == PARAM_IN)
+			continue;
+
+		struct reg *reg = register_get_by_name(mips64->core_cache, reg_params[i].reg_name, false);
+		if (!reg) {
+			LOG_ERROR("BUG: register '%s' not found", reg_params[i].reg_name);
+			return ERROR_COMMAND_SYNTAX_ERROR;
+		}
+
+		if (reg->size != reg_params[i].size) {
+			LOG_ERROR("BUG: register '%s' size doesn't match reg_params[i].size",
+					reg_params[i].reg_name);
+			return ERROR_COMMAND_SYNTAX_ERROR;
+		}
+
+		/* Honour the register width (64- or 32-bit) so a narrower
+		 * reg_param value buffer is never over-read; sizes are equal
+		 * per the check above. */
+		buf_set_u64(reg->value, 0, reg->size,
+				buf_get_u64(reg_params[i].value, 0, reg_params[i].size));
+		reg->valid = true;
+		reg->dirty = true;
+	}
+
+	retval = mips64_run_and_wait(target, entry_point, timeout_ms, exit_point, mips64);
+	if (retval != ERROR_OK)
+		return retval;
+
+	for (int i = 0; i < num_mem_params; i++) {
+		if (mem_params[i].direction != PARAM_OUT) {
+			retval = target_read_buffer(target, mem_params[i].address, mem_params[i].size,
+					mem_params[i].value);
+			if (retval != ERROR_OK)
+				return retval;
+		}
+	}
+
+	for (int i = 0; i < num_reg_params; i++) {
+		if (reg_params[i].direction != PARAM_OUT) {
+			struct reg *reg = register_get_by_name(mips64->core_cache, reg_params[i].reg_name, false);
+			if (!reg) {
+				LOG_ERROR("BUG: register '%s' not found", reg_params[i].reg_name);
+				return ERROR_COMMAND_SYNTAX_ERROR;
+			}
+
+			if (reg->size != reg_params[i].size) {
+				LOG_ERROR("BUG: register '%s' size doesn't match reg_params[i].size",
+						reg_params[i].reg_name);
+				return ERROR_COMMAND_SYNTAX_ERROR;
+			}
+
+			buf_set_u64(reg_params[i].value, 0, reg_params[i].size,
+					buf_get_u64(reg->value, 0, reg->size));
+		}
+	}
+
+	/* restore everything we saved before */
+	for (unsigned int i = 0; i < MIPS64_NUM_REGS; i++) {
+		uint64_t regvalue;
+		regvalue = buf_get_u64(mips64->core_cache->reg_list[i].value, 0, 64);
+		if (regvalue != context[i]) {
+			LOG_DEBUG("restoring register %s with value 0x%16.16" PRIx64,
+				mips64->core_cache->reg_list[i].name, context[i]);
+			buf_set_u64(mips64->core_cache->reg_list[i].value,
+					0, 64, context[i]);
+			mips64->core_cache->reg_list[i].valid = true;
+			mips64->core_cache->reg_list[i].dirty = true;
+		}
+	}
+
+	return ERROR_OK;
 }
 
 int mips64_examine(struct target *target)
