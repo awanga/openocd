@@ -20,8 +20,6 @@
 #define EJTAG_CTRL_DMA_WORD			0x00000100
 #define EJTAG_CTRL_DMA_TRIPLEBYTE	0x00000180
 
-#define RETRY_ATTEMPTS	0
-
 int mips32_dmaacc_read_mem(struct mips_ejtag *ejtag_info,
 		uint32_t addr, int size, int count, void *buf);
 int mips32_dmaacc_write_mem(struct mips_ejtag *ejtag_info,
