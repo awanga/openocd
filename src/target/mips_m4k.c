@@ -1045,12 +1045,12 @@ static int mips_m4k_read_memory(struct target *target, target_addr_t address,
 	} else
 		t = buffer;
 
-	/* if noDMA off, use DMAACC mode for memory read */
+	/* Use DMAACC mode when the hardware advertises DMA, else PRACC. */
 	int retval;
-	if (ejtag_info->impcode & EJTAG_IMP_NODMA)
-		retval = mips32_pracc_read_mem(ejtag_info, address, size, count, t);
-	else
+	if (ejtag_info->caps.dma_supported)
 		retval = mips32_dmaacc_read_mem(ejtag_info, address, size, count, t);
+	else
+		retval = mips32_pracc_read_mem(ejtag_info, address, size, count, t);
 
 	/* mips32_..._read_mem with size 4/2 returns uint32_t/uint16_t in host */
 	/* endianness, but byte array should represent target endianness       */
@@ -1121,12 +1121,12 @@ static int mips_m4k_write_memory(struct target *target, target_addr_t address,
 		buffer = t;
 	}
 
-	/* if noDMA off, use DMAACC mode for memory write */
+	/* Use DMAACC mode when the hardware advertises DMA, else PRACC. */
 	int retval;
-	if (ejtag_info->impcode & EJTAG_IMP_NODMA)
-		retval = mips32_pracc_write_mem(ejtag_info, address, size, count, buffer);
-	else
+	if (ejtag_info->caps.dma_supported)
 		retval = mips32_dmaacc_write_mem(ejtag_info, address, size, count, buffer);
+	else
+		retval = mips32_pracc_write_mem(ejtag_info, address, size, count, buffer);
 
 	free(t);
 

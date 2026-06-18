@@ -398,18 +398,15 @@ int mips_ejtag_init(struct mips_ejtag *ejtag_info)
 	}
 	ejtag_main_print_imp(ejtag_info);
 
-	/* Decode runtime capabilities from the pristine impcode, before the
-	 * NODMA override below mutates it, so caps.dma_supported records the
-	 * true hardware capability. Capabilities are reported via the
-	 * "mips32 ejtag_caps" command; they do not yet alter behavior.
-	 * Re-enabling DMA based on caps.dma_supported is deferred to Phase 5. */
+	/* Decode runtime capabilities from impcode. caps.dma_supported records
+	 * whether the hardware advertises EJTAG DMA access (NODMA bit clear);
+	 * the memory access path selects DMA vs PRACC from it (see
+	 * mips_m4k_read_memory()/mips_m4k_write_memory()). impcode is left
+	 * unmodified so it keeps reflecting the true hardware capabilities. */
 	mips_ejtag_detect_caps(ejtag_info);
 
-	if ((ejtag_info->impcode & EJTAG_IMP_NODMA) == 0) {
-		LOG_DEBUG("EJTAG: DMA Access Mode detected. Disabling to "
-			  "workaround current broken code.");
-		ejtag_info->impcode |= EJTAG_IMP_NODMA;
-	}
+	if (ejtag_info->caps.dma_supported)
+		LOG_DEBUG("EJTAG: DMA access mode supported; enabled");
 
 	ejtag_info->ejtag_ctrl = EJTAG_CTRL_PRACC | EJTAG_CTRL_PROBEN;
 
