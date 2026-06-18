@@ -843,9 +843,14 @@ int mips32_pracc_write_mem(struct mips_ejtag *ejtag_info, uint32_t addr, int siz
 		uint32_t start_addr = addr;
 		uint32_t end_addr = addr + count * size;
 		uint32_t rel = (conf & MIPS32_CONFIG0_AR_MASK) >> MIPS32_CONFIG0_AR_SHIFT;
-		/* FIXME: In MIPS Release 6, the encoding of CACHE instr has changed */
-		if (rel > MIPS32_RELEASE_2) {
-			LOG_DEBUG("Unsupported MIPS Release ( > 5)");
+		/* TODO: MIPS Release 6 re-encoded the CACHE instruction; only the
+		 * pre-R6 encoding is emitted below, so refuse R6 rather than issue
+		 * wrong opcodes. Proper R6 cache sync needs the R6 encoding and R6
+		 * hardware to validate. Fail visibly so a failed cacheable access
+		 * is not mistaken for a silent no-op. */
+		if (rel >= MIPS32_RELEASE_6) {
+			LOG_ERROR("cache sync unsupported on MIPS Release 6; cannot keep "
+				  "caches coherent for this memory access");
 			return ERROR_FAIL;
 		}
 		retval = mips32_pracc_synchronize_cache(ejtag_info, start_addr, end_addr, cached, rel);
@@ -1280,9 +1285,14 @@ static int mips32_pracc_fastdata_xfer_synchronize_cache(struct mips_ejtag *ejtag
 		uint32_t start_addr = addr;
 		uint32_t end_addr = addr + count * size;
 		uint32_t rel = (conf & MIPS32_CONFIG0_AR_MASK) >> MIPS32_CONFIG0_AR_SHIFT;
-		/* FIXME: In MIPS Release 6, the encoding of CACHE instr has changed */
-		if (rel > MIPS32_RELEASE_2) {
-			LOG_DEBUG("Unsupported MIPS Release ( > 5)");
+		/* TODO: MIPS Release 6 re-encoded the CACHE instruction; only the
+		 * pre-R6 encoding is emitted below, so refuse R6 rather than issue
+		 * wrong opcodes. Proper R6 cache sync needs the R6 encoding and R6
+		 * hardware to validate. Fail visibly so a failed cacheable access
+		 * is not mistaken for a silent no-op. */
+		if (rel >= MIPS32_RELEASE_6) {
+			LOG_ERROR("cache sync unsupported on MIPS Release 6; cannot keep "
+				  "caches coherent for this memory access");
 			return ERROR_FAIL;
 		}
 		retval = mips32_pracc_synchronize_cache(ejtag_info, start_addr, end_addr, cached, rel);
